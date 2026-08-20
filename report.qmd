@@ -1,0 +1,141 @@
+---
+title: "NHS 111 Mental Health Line — 2025 Regional Explorer"
+format:
+  html:
+    page-layout: full
+    embed-resources: true
+    grid:
+      body-width: 1000px
+execute:
+  echo: false
+  warning: false
+---
+
+```{=html}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  .info-tooltip { font-size: 13px; }
+  .map-wrap { border-radius: 8px; overflow: hidden; box-shadow: 0 1px 6px rgba(0,0,0,0.15); }
+</style>
+```
+
+Hover over a region to see its NHS 111 mental health call-line figures. Use the controls below to change month and metric.
+
+```{ojs}
+tidy = FileAttachment("data/processed/nhs111_tidy.json").json()
+regions = FileAttachment("data/processed/nhs_regions.geojson").json()
+```
+
+```{ojs}
+L = require("leaflet@1.9.4")
+d3 = require("d3@7")
+```
+
+```{ojs}
+months = [...new Set(tidy.map(d => d.month))].sort()
+monthLabels = new Map(tidy.map(d => [d.month, d.month_label]))
+metrics = [...new Set(tidy.map(d => d.metric))]
+metricLabels = new Map(tidy.map(d => [d.metric, d.metric_label]))
+metricUnits = new Map(tidy.map(d => [d.metric, d.unit]))
+```
+
+```{ojs}
+viewof selectedMonth = Inputs.select(
+  months,
+  {
+    label: "Month",
+    format: m => monthLabels.get(m),
+    value: months[0]
+  }
+)
+```
+
+```{ojs}
+viewof selectedMetric = Inputs.select(
+  metrics,
+  {
+    label: "Metric",
+    format: m => metricLabels.get(m),
+    value: "calls_received"
+  }
+)
+```
+
+```{ojs}
+filtered = tidy.filter(d => d.month === selectedMonth && d.metric === selectedMetric)
+valueByRegion = new Map(filtered.map(d => [d.region, d.value]))
+```
+
+```{ojs}
+colorScale = d3.scaleSequential(d3.interpolateBlues)
+  .domain(d3.extent(filtered, d => d.value))
+```
+
+```{ojs}
+// Small helper to format a value for display, based on its unit
+formatValue = (v, unit) => {
+  if (v == null) return "no data";
+  if (unit === "%") return `${v.toFixed(1)}%`;
+  if (unit === "per 100k") return `${v.toFixed(1)} per 100k`;
+  if (unit === "seconds") return `${v.toFixed(0)} sec`;
+  return v.toLocaleString();
+}
+```
+
+```{ojs}
+map = {
+  const container = html`<div class="map-wrap" style="height:600px;"></div>`;
+  yield container;
+
+  const leafletMap = L.map(container).setView([52.9, -1.5], 6);
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: "&copy; OpenStreetMap contributors",
+    maxZoom: 10
+  }).addTo(leafletMap);
+
+  const unit = metricUnits.get(selectedMetric);
+  const label = metricLabels.get(selectedMetric);
+
+  function style(feature) {
+    const v = valueByRegion.get(feature.properties.region);
+    return {
+      fillColor: v == null ? "#cccccc" : colorScale(v),
+      weight: 1.5,
+      color: "#555555",
+      fillOpacity: 0.85
+    };
+  }
+
+  function onEachFeature(feature, layer) {
+    const v = valueByRegion.get(feature.properties.region);
+    layer.bindTooltip(
+      `<strong>${feature.properties.region}</strong><br>${label}: ${formatValue(v, unit)}`,
+      { sticky: true, className: "info-tooltip" }
+    );
+    layer.on({
+      mouseover: e => e.target.setStyle({ weight: 3, color: "#222" }),
+      mouseout: e => e.target.setStyle({ weight: 1.5, color: "#555555" })
+    });
+  }
+
+  const geoLayer = L.geoJson(regions, { style, onEachFeature }).addTo(leafletMap);
+  leafletMap.fitBounds(geoLayer.getBounds(), { padding: [10, 10] });
+
+  return container;
+}
+```
+
+```{ojs}
+legend = {
+  const [min, max] = colorScale.domain();
+  const unit = metricUnits.get(selectedMetric);
+  return html`<div style="margin-top:10px;display:flex;align-items:center;gap:10px;font-size:13px;">
+    <span>${formatValue(min, unit)}</span>
+    <div style="width:220px;height:12px;border-radius:3px;
+      background:linear-gradient(to right, ${colorScale(min)}, ${colorScale((min + max) / 2)}, ${colorScale(max)});">
+    </div>
+    <span>${formatValue(max, unit)}</span>
+  </div>`
+}
+```
