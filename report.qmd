@@ -7,7 +7,7 @@ format:
     grid:
       body-width: 1000px
 execute:
-  echo: false
+  echo: false #caused an issue when forgotten
   warning: false
 ---
 

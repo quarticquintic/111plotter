@@ -22,10 +22,7 @@ import geopandas as gpd
 RAW_PATH = Path(__file__).parent.parent / "data" / "raw" / "nhs_regions_raw.geojson"
 OUTPUT_PATH = Path(__file__).parent.parent / "data" / "processed" / "nhs_regions.geojson"
 
-# How aggressively to simplify geometry (in degrees, since we simplify after
-# reprojecting to WGS84). 0.001 is a reasonable starting point for a
-# region-level (not local-authority-level) map; raise it if the file is
-# still large/slow, lower it if boundaries look too blocky.
+# How aggressively to simplify geometry
 SIMPLIFY_TOLERANCE = 0.001
 
 
@@ -53,8 +50,7 @@ def main():
     print(f"Simplifying geometry (tolerance={SIMPLIFY_TOLERANCE})...")
     gdf["geometry"] = gdf["geometry"].simplify(SIMPLIFY_TOLERANCE, preserve_topology=True)
 
-    # Keep only what we need, and rename the region name field so it matches
-    # the "region" key used in nhs111_tidy.json
+    # the region key used in nhs111_tidy.json
     name_col = "NHSER24NM" if "NHSER24NM" in gdf.columns else "NHSER23NM"
     gdf = gdf[[name_col, "geometry"]].rename(columns={name_col: "region"})
 
